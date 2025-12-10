@@ -1,327 +1,58 @@
 <!DOCTYPE html>
-<html lang="ko">
+* Yukiharu Software - Full-width to Half-width Converter
+*
+* Core Logic:
+* 1. ASCII: Convert 0xFF01-0xFF5E to 0x21-0x7E. Convert 0x3000 (Ideographic Space) to 0x0020 (Space).
+* 2. Katakana: Map Full-width Katakana to Half-width Katakana.
+* - Handles Voiced (Dakuten) and Semi-voiced (Handakuten) by decomposing them into two characters.
+* - Example: ガ (Ga) -> ｶ (Ka) + ﾞ (Dakuten)
+*/
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="일본어 전각 가타카나, 영문, 숫자를 반각으로 간편하게 변환해주는 무료 온라인 도구입니다. 全角カタカナ、英数字を半角に変換する無料ツール。">
-    <meta name="keywords"
-        content="반각변환 프로그램, 전각 반각 변환, 일본어 반각 변환, 가타카나 변환, 무료 반각 변환, 텍스트 변환기, 全角半角変換, 半角カタカナ, 無料, 無料ツール, Full-width to Half-width, Yukiharu Software">
-    <meta name="author" content="Yukiharu Software">
-    <meta property="og:title" content="Yukiharu Software - 무료 전각 반각 변환기 (無料 全角半角変換)">
-    <meta property="og:description" content="빠르고 간편한 일본어/영문 전각 → 반각 변환 도구. 무료로 사용하세요. 全角カタカナを半角に変換する無料ツール。">
-    <meta property="og:type" content="website">
-    <title>Yukiharu Software - 무료 전각 반각 변환기 (無料 全角半角変換)</title>
-    <style>
-        :root {
-            --primary-color: #4f46e5;
-            --primary-hover: #4338ca;
-            --bg-color: #f9fafb;
-            --card-bg: #ffffff;
-            --text-color: #1f2937;
-            --text-secondary: #6b7280;
-            --border-color: #e5e7eb;
-            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --radius: 0.5rem;
+// Full-width to Half-width Katakana Mapping Table
+const KATAKANA_MAP = {
+'。': '｡', '、': '､', '「': '｢', '」': '｣', '・': '･', 'ー': 'ｰ',
+'ァ': 'ｧ', 'ア': 'ｱ', 'ィ': 'ｨ', 'イ': 'ｲ', 'ゥ': 'ｩ', 'ウ': 'ｳ', 'ェ': 'ｪ', 'エ': 'ｴ', 'ォ': 'ｫ', 'オ': 'ｵ',
+'カ': 'ｶ', 'ガ': 'ｶﾞ', 'キ': 'ｷ', 'ギ': 'ｷﾞ', 'ク': 'ｸ', 'グ': 'ｸﾞ', 'ケ': 'ｹ', 'ゲ': 'ｹﾞ', 'コ': 'ｺ', 'ゴ': 'ｺﾞ',
+'サ': 'ｻ', 'ザ': 'ｻﾞ', 'シ': 'ｼ', 'ジ': 'ｼﾞ', 'ス': 'ｽ', 'ズ': 'ｽﾞ', 'セ': 'ｾ', 'ゼ': 'ｾﾞ', 'ソ': 'ｿ', 'ゾ': 'ｿﾞ',
+'タ': 'ﾀ', 'ダ': 'ﾀﾞ', 'チ': 'ﾁ', 'ヂ': 'ﾁﾞ', 'ッ': 'ｯ', 'ツ': 'ﾂ', 'ヅ': 'ﾂﾞ', 'テ': 'ﾃ', 'デ': 'ﾃﾞ', 'ト': 'ﾄ', 'ド': 'ﾄﾞ',
+'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
+'ハ': 'ﾊ', 'バ': 'ﾊﾞ', 'パ': 'ﾊﾟ', 'ヒ': 'ﾋ', 'ビ': 'ﾋﾞ', 'ピ': 'ﾋﾟ', 'フ': 'ﾌ', 'ブ': 'ﾌﾞ', 'プ': 'ﾌﾟ', 'ヘ': 'ﾍ', 'ベ': 'ﾍﾞ',
+'ペ': 'ﾍﾟ', 'ホ': 'ﾎ', 'ボ': 'ﾎﾞ', 'ポ': 'ﾎﾟ',
+'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
+'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
+'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ',
+'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
+'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
+'ヴ': 'ｳﾞ', 'ヵ': 'ｶ', 'ヶ': 'ｹ', // Rare characters
+'゛': 'ﾞ', '゜': 'ﾟ' // Standalone voiced marks
+};
+
+/**
+* Converts a string containing Full-width characters to Half-width.
+* @param {string} str - The input string.
+* @returns {string} - The converted string.
+*/
+function toHankaku(str) {
+if (!str) return "";
+
+let result = "";
+for (let i = 0; i < str.length; i++) { const char=str[i]; const code=char.charCodeAt(0); // 1. ASCII Range (Full-width
+    alphanumeric & symbols) // Range: 0xFF01 (!) to 0xFF5E (~) -> 0x21 to 0x7E
+    if (code >= 0xFF01 && code <= 0xFF5E) { result +=String.fromCharCode(code - 0xFEE0); } // 2. Ideographic Space
+        (Full-width space) // 0x3000 -> 0x0020
+        else if (code === 0x3000) {
+        result += " ";
         }
-
-        body {
-            font-family: 'Inter', 'Noto Sans KR', 'Noto Sans JP', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
+        // 3. Katakana Mapping
+        else if (KATAKANA_MAP[char]) {
+        result += KATAKANA_MAP[char];
         }
-
-        header {
-            background-color: var(--card-bg);
-            border-bottom: 1px solid var(--border-color);
-            padding: 1rem 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+        // 4. Keep original character (Kanji, Hiragana, etc.)
+        else {
+        result += char;
         }
-
-        .brand {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            text-decoration: none;
         }
-
-        main {
-            flex: 1;
-            padding: 2rem;
-            max-width: 1200px;
-            margin: 0 auto;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        h1 {
-            text-align: center;
-            margin-bottom: 2rem;
-            font-size: 1.8rem;
-            color: var(--text-color);
-        }
-
-        .subtitle {
-            display: block;
-            font-size: 1rem;
-            color: var(--text-secondary);
-            margin-top: 0.5rem;
-            font-weight: normal;
-        }
-
-        .converter-container {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 1.5rem;
-            background: var(--card-bg);
-            padding: 2rem;
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-        }
-
-        @media (min-width: 768px) {
-            .converter-container {
-                grid-template-columns: 1fr auto 1fr;
-                align-items: stretch;
-            }
-        }
-
-        .input-group,
-        .output-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        label {
-            font-weight: 600;
-            font-size: 0.9rem;
-            color: var(--text-color);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        textarea {
-            width: 100%;
-            height: 300px;
-            padding: 1rem;
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius);
-            font-family: monospace;
-            font-size: 1rem;
-            resize: vertical;
-            box-sizing: border-box;
-            transition: border-color 0.2s;
-        }
-
-        textarea:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            ring: 2px solid var(--primary-color);
-        }
-
-        .controls {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        button {
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: var(--radius);
-            font-weight: 600;
-            cursor: pointer;
-            transition: background-color 0.2s, transform 0.1s;
-            font-size: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        button:hover {
-            background-color: var(--primary-hover);
-        }
-
-        button:active {
-            transform: scale(0.98);
-        }
-
-        button.secondary {
-            background-color: white;
-            color: var(--text-color);
-            border: 1px solid var(--border-color);
-        }
-
-        button.secondary:hover {
-            background-color: var(--bg-color);
-        }
-
-        .copy-btn {
-            font-size: 0.8rem;
-            padding: 0.25rem 0.5rem;
-        }
-
-        footer {
-            text-align: center;
-            padding: 1.5rem;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            border-top: 1px solid var(--border-color);
-            background-color: var(--card-bg);
-        }
-
-        /* Toast Notification */
-        #toast {
-            visibility: hidden;
-            min-width: 250px;
-            background-color: #333;
-            color: #fff;
-            text-align: center;
-            border-radius: 4px;
-            padding: 16px;
-            position: fixed;
-            z-index: 1;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 17px;
-            opacity: 0;
-            transition: opacity 0.3s, bottom 0.3s;
-        }
-
-        #toast.show {
-            visibility: visible;
-            opacity: 1;
-            bottom: 50px;
-        }
-
-        #toast.error {
-            background-color: #ef4444;
-        }
-    </style>
-</head>
-
-<body>
-
-    <header>
-        <a href="#" class="brand">Yukiharu Software</a>
-        <nav>
-            <!-- Simple nav placeholder -->
-        </nav>
-    </header>
-
-    <main>
-        <h1>
-            全角 → 半角 変換ツール
-            <span class="subtitle">전각 → 반각 변환 도구</span>
-        </h1>
-
-        <div class="converter-container">
-            <div class="input-group">
-                <label for="input-text">
-                    <span>원본 텍스트 (元テキスト)</span>
-                </label>
-                <textarea id="input-text" placeholder="여기에 텍스트를 입력하세요...&#10;ここにテキストを入力してください..."></textarea>
-            </div>
-
-            <div class="controls">
-                <button id="convert-btn" title="전각 문자를 반각으로 변환합니다">
-                    <span>전각 → 반각 변환</span>
-                    <span style="font-size: 0.8em; opacity: 0.8;">(変換)</span>
-                </button>
-            </div>
-
-            <div class="output-group">
-                <label for="output-text">
-                    <span>반각 변환 결과 (変換結果)</span>
-                    <button id="copy-btn" class="secondary copy-btn">Copy (복사/コピー)</button>
-                </label>
-                <textarea id="output-text" readonly placeholder="변환 결과가 여기에 표시됩니다...&#10;変換結果がここに表示されます..."></textarea>
-            </div>
-        </div>
-    </main>
-
-    <footer>
-        &copy; 2025 Yukiharu Software. All rights reserved.
-    </footer>
-
-    <div id="toast"></div>
-
-    <script>
-        /**
-         * Yukiharu Software - Full-width to Half-width Converter
-         * 
-         * Core Logic:
-         * 1. ASCII: Convert 0xFF01-0xFF5E to 0x21-0x7E. Convert 0x3000 (Ideographic Space) to 0x0020 (Space).
-         * 2. Katakana: Map Full-width Katakana to Half-width Katakana.
-         *    - Handles Voiced (Dakuten) and Semi-voiced (Handakuten) by decomposing them into two characters.
-         *    - Example: ガ (Ga) -> ｶ (Ka) + ﾞ (Dakuten)
-         */
-
-        // Full-width to Half-width Katakana Mapping Table
-        const KATAKANA_MAP = {
-            '。': '｡', '、': '､', '「': '｢', '」': '｣', '・': '･', 'ー': 'ｰ',
-            'ァ': 'ｧ', 'ア': 'ｱ', 'ィ': 'ｨ', 'イ': 'ｲ', 'ゥ': 'ｩ', 'ウ': 'ｳ', 'ェ': 'ｪ', 'エ': 'ｴ', 'ォ': 'ｫ', 'オ': 'ｵ',
-            'カ': 'ｶ', 'ガ': 'ｶﾞ', 'キ': 'ｷ', 'ギ': 'ｷﾞ', 'ク': 'ｸ', 'グ': 'ｸﾞ', 'ケ': 'ｹ', 'ゲ': 'ｹﾞ', 'コ': 'ｺ', 'ゴ': 'ｺﾞ',
-            'サ': 'ｻ', 'ザ': 'ｻﾞ', 'シ': 'ｼ', 'ジ': 'ｼﾞ', 'ス': 'ｽ', 'ズ': 'ｽﾞ', 'セ': 'ｾ', 'ゼ': 'ｾﾞ', 'ソ': 'ｿ', 'ゾ': 'ｿﾞ',
-            'タ': 'ﾀ', 'ダ': 'ﾀﾞ', 'チ': 'ﾁ', 'ヂ': 'ﾁﾞ', 'ッ': 'ｯ', 'ツ': 'ﾂ', 'ヅ': 'ﾂﾞ', 'テ': 'ﾃ', 'デ': 'ﾃﾞ', 'ト': 'ﾄ', 'ド': 'ﾄﾞ',
-            'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
-            'ハ': 'ﾊ', 'バ': 'ﾊﾞ', 'パ': 'ﾊﾟ', 'ヒ': 'ﾋ', 'ビ': 'ﾋﾞ', 'ピ': 'ﾋﾟ', 'フ': 'ﾌ', 'ブ': 'ﾌﾞ', 'プ': 'ﾌﾟ', 'ヘ': 'ﾍ', 'ベ': 'ﾍﾞ', 'ペ': 'ﾍﾟ', 'ホ': 'ﾎ', 'ボ': 'ﾎﾞ', 'ポ': 'ﾎﾟ',
-            'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
-            'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
-            'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ',
-            'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
-            'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
-            'ヴ': 'ｳﾞ', 'ヵ': 'ｶ', 'ヶ': 'ｹ', // Rare characters
-            '゛': 'ﾞ', '゜': 'ﾟ' // Standalone voiced marks
-        };
-
-        /**
-         * Converts a string containing Full-width characters to Half-width.
-         * @param {string} str - The input string.
-         * @returns {string} - The converted string.
-         */
-        function toHankaku(str) {
-            if (!str) return "";
-
-            let result = "";
-            for (let i = 0; i < str.length; i++) {
-                const char = str[i];
-                const code = char.charCodeAt(0);
-
-                // 1. ASCII Range (Full-width alphanumeric & symbols)
-                // Range: 0xFF01 (!) to 0xFF5E (~) -> 0x21 to 0x7E
-                if (code >= 0xFF01 && code <= 0xFF5E) {
-                    result += String.fromCharCode(code - 0xFEE0);
-                }
-                // 2. Ideographic Space (Full-width space)
-                // 0x3000 -> 0x0020
-                else if (code === 0x3000) {
-                    result += " ";
-                }
-                // 3. Katakana Mapping
-                else if (KATAKANA_MAP[char]) {
-                    result += KATAKANA_MAP[char];
-                }
-                // 4. Keep original character (Kanji, Hiragana, etc.)
-                else {
-                    result += char;
-                }
-            }
-            return result;
+        return result;
         }
 
         // DOM Elements
@@ -333,69 +64,69 @@
 
         // Toast Notification Helper
         function showToast(message, isError = false) {
-            toast.textContent = message;
-            toast.className = isError ? 'error show' : 'show';
-            setTimeout(() => {
-                toast.className = toast.className.replace('show', '');
-            }, 3000);
+        toast.textContent = message;
+        toast.className = isError ? 'error show' : 'show';
+        setTimeout(() => {
+        toast.className = toast.className.replace('show', '');
+        }, 3000);
         }
 
         // Event Listener: Convert
         convertBtn.addEventListener('click', () => {
-            try {
-                const input = inputText.value;
-                if (input.length === 0) {
-                    showToast("텍스트를 입력해주세요. (テキストを入力してください)", true);
-                    return;
-                }
+        try {
+        const input = inputText.value;
+        if (input.length === 0) {
+        showToast("텍스트를 입력해주세요. (テキストを入力してください)", true);
+        return;
+        }
 
-                const converted = toHankaku(input);
-                outputText.value = converted;
+        const converted = toHankaku(input);
+        outputText.value = converted;
 
-                // Optional: Log to console for debugging
-                console.log("Conversion successful");
-            } catch (error) {
-                console.error("Conversion failed:", error);
-                showToast("변환 중 오류가 발생했습니다. (エラーが発生しました)", true);
-            }
+        // Optional: Log to console for debugging
+        console.log("Conversion successful");
+        } catch (error) {
+        console.error("Conversion failed:", error);
+        showToast("변환 중 오류가 발생했습니다. (エラーが発生しました)", true);
+        }
         });
 
         // Event Listener: Copy
         copyBtn.addEventListener('click', () => {
-            const textToCopy = outputText.value;
-            if (!textToCopy) {
-                showToast("복사할 내용이 없습니다. (コピーする内容がありません)", true);
-                return;
-            }
+        const textToCopy = outputText.value;
+        if (!textToCopy) {
+        showToast("복사할 내용이 없습니다. (コピーする内容がありません)", true);
+        return;
+        }
 
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                showToast("복사되었습니다! (コピーしました！)");
-            }).catch(err => {
-                console.error('Failed to copy: ', err);
-                // Fallback for older browsers or if permission denied
-                outputText.select();
-                document.execCommand('copy');
-                showToast("복사되었습니다! (コピーしました！)");
-            });
+        navigator.clipboard.writeText(textToCopy).then(() => {
+        showToast("복사되었습니다! (コピーしました！)");
+        }).catch(err => {
+        console.error('Failed to copy: ', err);
+        // Fallback for older browsers or if permission denied
+        outputText.select();
+        document.execCommand('copy');
+        showToast("복사되었습니다! (コピーしました！)");
+        });
         });
 
         /*
-         * Test Cases & Examples (For verification)
-         * 
-         * Input: カ）ピータースラボ
-         * Expected: ｶ)ﾋﾟｰﾀｰｽﾗﾎﾞ
-         * 
-         * Input: （株）ピータースラボ
-         * Expected: (株)ﾋﾟｰﾀｰｽﾗﾎﾞ
-         * 
-         * Input: ＡＢＣ１２３
-         * Expected: ABC123
-         * 
-         * Input: ガンダム
-         * Expected: ｶﾞﾝﾀﾞﾑ
-         */
-    </script>
+        * Test Cases & Examples (For verification)
+        *
+        * Input: カ）ピータースラボ
+        * Expected: ｶ)ﾋﾟｰﾀｰｽﾗﾎﾞ
+        *
+        * Input: （株）ピータースラボ
+        * Expected: (株)ﾋﾟｰﾀｰｽﾗﾎﾞ
+        *
+        * Input: ＡＢＣ１２３
+        * Expected: ABC123
+        *
+        * Input: ガンダム
+        * Expected: ｶﾞﾝﾀﾞﾑ
+        */
+        </script>
 
-</body>
+        </body>
 
-</html>
+        </html>
